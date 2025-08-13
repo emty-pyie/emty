@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Ground Station — Cockpit UI</title>
+<style>
+:root{
+  --bg:#0f1112; --panel:#16181a; --panel-2:#1a1c1e; --line:#33373a;
+  --text:#eceff1; --muted:#9aa0a6; --amber:#d69f2a; --red:#c43e3e; --green:#6ab04c;
+}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial,Helvetica,sans-serif}
+.app{display:grid;grid-template-columns:320px 1fr 320px;grid-template-rows:88px 1fr 120px;gap:12px;padding:12px;height:100vh;box-sizing:border-box}
+header{grid-column:1/4;background:linear-gradient(0deg, rgba(255,255,255,0.02), rgba(255,255,255,0.005));border:1px solid var(--line);border-radius:8px;display:flex;align-items:center;justify-content:space-between;padding:12px}
+.title{font-weight:600;font-size:1.05rem}
+.meta{color:var(--muted);font-size:0.95rem}
+.left{grid-column:1/2;grid-row:2/3;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box}
+.altitude-tape{display:flex;gap:12px;align-items:center}
+.alt-read{width:120px;background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005));border-radius:6px;padding:10px;text-align:center;border:1px solid var(--line)}
+.alt-read .value{font-size:2.6rem;font-weight:700;line-height:1}
+.alt-read .label{font-size:0.85rem;color:var(--muted)}
+.horizon-wrap{flex:1;background:var(--panel-2);border-radius:8px;border:1px solid var(--line);padding:8px;box-sizing:border-box}
+.mini-stats{display:flex;gap:8px;margin-top:6px}
+.stat{flex:1;background:transparent;border:1px solid var(--line);padding:8px;border-radius:6px;text-align:center}
+.stat .num{font-size:1.3rem;font-weight:600}
+.stat .lbl{font-size:0.8rem;color:var(--muted)}
+.center{grid-column:2/3;grid-row:2/3;background:var(--panel-2);border-radius:8px;border:1px solid var(--line);padding:12px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box}
+.map{flex:1;border-radius:6px;border:1px dashed var(--line);background: linear-gradient(90deg,#0b0c0d,#0f1112);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+.grid{position:absolute;inset:0;opacity:0.12;background-image: linear-gradient(transparent 24px, rgba(255,255,255,0.02) 25px), linear-gradient(90deg, transparent 24px, rgba(255,255,255,0.02) 25px);background-size:50px 50px;transform: translateZ(0)}
+.plane{position:absolute;width:56px;height:56px;transform: translate(-50%,-50%) rotate(0)}
+.right{grid-column:3/4;grid-row:2/3;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px}
+.compass-outer{background:var(--panel-2);border-radius:8px;padding:12px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
+.warnings{flex:1;background:var(--panel-2);border-radius:8px;padding:10px;border:1px solid var(--line);overflow:auto}
+.warn{padding:8px;border-radius:6px;margin-bottom:8px;color:var(--text);font-weight:600;display:flex;justify-content:space-between;align-items:center}
+.warn.info{background: rgba(255,255,255,0.02); color:var(--text)}
+.warn.caution{background: rgba(214,159,42,0.08); color:var(--amber)}
+.warn.danger{background: rgba(196,62,62,0.08); color:var(--red)}
+footer{grid-column:1/4;background:linear-gradient(0deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005));border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;gap:12px;align-items:center;justify-content:space-between}
+.footer-left{color:var(--muted)}
+.footer-right{display:flex;gap:10px;align-items:center}
+.muted{color:var(--muted);font-size:0.9rem}
+button{background:transparent;border:1px solid var(--line);color:var(--text);padding:8px 12px;border-radius:6px}
+@media (max-width:1100px){.app{grid-template-columns:1fr;grid-template-rows:88px 360px 1fr 200px;gap:10px} .left{grid-row:3/4} .center{grid-row:2/3} .right{grid-row:4/5}}
+/* little smooth transitions */
+.value, .num { transition: all 260ms linear; }
+iframe#gpsFrame { width:100%; height:100%; border-radius:8px; border:0; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="title">NYRA PX I AVIONICS</div>
+    <div class="meta">Mode: <span id="mode">SIM</span> · WS: <span id="wsStatus">DISCONNECTED</span></div>
+  </header>
+
+  <!-- LEFT -->
+  <section class="left">
+    <div class="altitude-tape">
+      <div class="alt-read">
+        <div class="label muted">ALTITUDE</div>
+        <div class="value" id="altValue">1200</div>
+        <div class="label muted">ft</div>
+      </div>
+      <div style="flex:1;">
+        <div class="mini-stats">
+          <div class="stat"><div class="num" id="speed">72</div><div class="lbl muted">kn</div></div>
+          <div class="stat"><div class="num" id="accel">0.8</div><div class="lbl muted">m/s²</div></div>
+        </div>
+        <div style="height:8px"></div>
+        <div class="mini-stats">
+          <div class="stat"><div class="num" id="pitchVal">+5.0</div><div class="lbl muted">PITCH</div></div>
+          <div class="stat"><div class="num" id="rollVal">+2.0</div><div class="lbl muted">ROLL</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="horizon-wrap">
+      <!-- Artificial Horizon SVG (unchanged) -->
+      <svg id="horizonSvg" viewBox="-200 -150 400 300" preserveAspectRatio="xMidYMid meet" width="100%" height="100%">
+        <defs>
+          <linearGradient id="skyGrad" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="#6aa8ff" stop-opacity="0.95"/>
+            <stop offset="100%" stop-color="#2d6fb6" stop-opacity="0.95"/>
+          </linearGradient>
+          <linearGradient id="groundGrad" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="#6b6038" stop-opacity="0.95"/>
+            <stop offset="100%" stop-color="#3d3520" stop-opacity="0.95"/>
+          </linearGradient>
+        </defs>
+        <g id="rollGroup" transform="rotate(0)">
+          <g id="pitchGroup" transform="translate(0,0)">
+            <rect x="-1000" y="-1000" width="2000" height="1100" fill="url(#skyGrad)"></rect>
+            <rect x="-1000" y="100" width="2000" height="1000" fill="url(#groundGrad)"></rect>
+            <line x1="-1000" y1="100" x2="1000" y2="100" stroke="#fff" stroke-width="2" />
+            <g id="ladder" stroke="#fff" stroke-width="1" fill="#fff" opacity="0.95"></g>
+          </g>
+        </g>
+        <g transform="translate(0,0)">
+          <polygon points="-24,12 24,12 12,0 -12,0" fill="#fff" stroke="#111" stroke-width="0.5" />
+          <line x1="-60" y1="12" x2="-30" y2="12" stroke="#fff" stroke-width="2" />
+          <line x1="60" y1="12" x2="30" y2="12" stroke="#fff" stroke-width="2" />
+        </g>
+      </svg>
+    </div>
+  </section>
+
+  <!-- CENTER (GPS iframe) -->
+  <section class="center">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <div class="muted">GPS Map</div>
+      <div>
+        <button id="btnRTB">Return to Base</button>
+        <button id="btnWP">Set WP</button>
+      </div>
+    </div>
+
+    <div style="flex:1;">
+      <iframe id="gpsFrame" src="gps.html"></iframe>
+    </div>
+  </section>
+
+  <!-- RIGHT -->
+  <section class="right">
+    <div class="compass-outer">
+      <svg id="compassSvg" viewBox="0 0 240 240" width="220" height="220">
+        <defs><linearGradient id="compBg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#1c1f22"/><stop offset="1" stop-color="#0f1112"/></linearGradient></defs>
+        <circle cx="120" cy="120" r="110" fill="url(#compBg)" stroke="#2f3336" stroke-width="4"/>
+        <g id="compDial" transform="translate(120,120) rotate(0)">
+          <text x="0" y="-92" text-anchor="middle" fill="#e8eef6" font-size="18">N</text>
+          <text x="82" y="8" text-anchor="middle" fill="#cfd6dc" font-size="14">E</text>
+          <text x="0" y="106" text-anchor="middle" fill="#cfd6dc" font-size="14">S</text>
+          <text x="-82" y="8" text-anchor="middle" fill="#cfd6dc" font-size="14">W</text>
+          <line x1="0" y1="-96" x2="0" y2="-60" stroke="#e8eef6" stroke-width="3" />
+        </g>
+        <g transform="translate(120,120)"><circle r="6" fill="#e8eef6"></circle></g>
+        <text x="120" y="205" id="headingText" text-anchor="middle" fill="#e8eef6" font-size="16">HDG 000°</text>
+      </svg>
+    </div>
+
+    <div class="warnings" id="warnings"></div>
+  </section>
+
+  <footer>
+    <div class="footer-left"><span class="muted">SWAK:</span> <span id="swak">Z1-TEST</span></div>
+    <div class="footer-right"><div class="muted">Telemetry:</div><div id="telemetryRate">Sim</div></div>
+  </footer>
+</div>
+
+<script>
+/* ===== CONFIG ===== */
+const WS_URL = "ws://192.168.4.1:81"; // change to your ESP32 IP:port
+const USE_WEBSOCKET = true;          // set true to connect to ESP32
+const RECONNECT_MS = 2000;
+const MAX_TRACK_POINTS = 2000;       // keep memory sane
+const HOME_COORD = { lat: 28.6139, lon: 77.2090 }; // set your base coordinates
+/* ===== END CONFIG ===== */
+
+/* UI elements */
+const altValue = document.getElementById('altValue');
+const speedEl = document.getElementById('speed');
+const accelEl = document.getElementById('accel');
+const pitchEl = document.getElementById('pitchVal');
+const rollEl = document.getElementById('rollVal');
+const modeEl = document.getElementById('mode');
+const wsStatusEl = document.getElementById('wsStatus');
+const warningsEl = document.getElementById('warnings');
+const headingText = document.getElementById('headingText');
+const compDial = document.getElementById('compDial');
+const rollGroup = document.getElementById('rollGroup');
+const pitchGroup = document.getElementById('pitchGroup');
+const ladder = document.getElementById('ladder');
+const telemetryRate = document.getElementById('telemetryRate');
+const gpsFrame = document.getElementById('gpsFrame');
+
+let ws, wsConnected = false;
+let trackPoints = []; // array of {lat, lon}
+
+/* helper: post telemetry to iframe if loaded */
+function postToIframe(msg){
+  if(!gpsFrame || !gpsFrame.contentWindow) return;
+  gpsFrame.contentWindow.postMessage(msg, "*");
+}
+
+/* Build ladder markers (unchanged) */
+function buildLadder(){
+  ladder.innerHTML = "";
+  for(let deg=-45; deg<=45; deg+=5){
+    if(deg===0) continue;
+    const y = -deg * 6;
+    const isMajor = deg % 10 === 0;
+    const lineLen = isMajor ? 80 : 40;
+    const g = document.createElementNS("http://www.w3.org/2000/svg","g");
+    g.setAttribute("transform", `translate(0,${y})`);
+    const l1 = document.createElementNS("http://www.w3.org/2000/svg","line");
+    l1.setAttribute("x1",-lineLen); l1.setAttribute("x2",-12); l1.setAttribute("y1",0); l1.setAttribute("y2",0);
+    l1.setAttribute("stroke","#fff"); l1.setAttribute("stroke-width","1");
+    const l2 = document.createElementNS("http://www.w3.org/2000/svg","line");
+    l2.setAttribute("x1",12); l2.setAttribute("x2",lineLen); l2.setAttribute("y1",0); l2.setAttribute("y2",0);
+    l2.setAttribute("stroke","#fff"); l2.setAttribute("stroke-width","1");
+    g.appendChild(l1); g.appendChild(l2);
+    if(isMajor){
+      const tL = document.createElementNS("http://www.w3.org/2000/svg","text");
+      tL.setAttribute("x",-lineLen-8); tL.setAttribute("y",4); tL.setAttribute("fill","#fff"); tL.setAttribute("font-size","10");
+      tL.textContent = Math.abs(deg);
+      const tR = document.createElementNS("http://www.w3.org/2000/svg","text");
+      tR.setAttribute("x",lineLen+6); tR.setAttribute("y",4); tR.setAttribute("fill","#fff"); tR.setAttribute("font-size","10");
+      tR.textContent = Math.abs(deg);
+      g.appendChild(tL); g.appendChild(tR);
+    }
+    ladder.appendChild(g);
+  }
+}
+
+/* UI state interpolation */
+let display = { alt:1200, speed:72, accel:0.8, pitch:0, roll:0, heading:0, mode:'SIM', warnings:['RUNNING'] };
+let target = Object.assign({}, display);
+
+function tickInterp(dt){
+  const speed = 6.0;
+  ['alt','speed','accel','pitch','roll','heading'].forEach(k=>{
+    const a = display[k], b = target[k];
+    if(k==='heading'){
+      let diff = (b - a + 540) % 360 - 180;
+      display.heading = (a + diff * Math.min(1, dt*speed) + 360) % 360;
+    } else display[k] = a + (b - a) * Math.min(1, dt*speed);
+  });
+}
+
+function updateUI(){
+  altValue.textContent = Math.round(display.alt);
+  speedEl.textContent = display.speed.toFixed(0);
+  accelEl.textContent = display.accel.toFixed(2);
+  pitchEl.textContent = (display.pitch >= 0 ? '+' : '') + display.pitch.toFixed(1);
+  rollEl.textContent = (display.roll >= 0 ? '+' : '') + display.roll.toFixed(1);
+  modeEl.textContent = target.mode || 'SIM';
+  telemetryRate.textContent = USE_WEBSOCKET ? 'WS' : 'Sim';
+
+  // warnings
+  warningsEl.innerHTML = '';
+  const wsArr = target.warnings || ['RUNNING'];
+  wsArr.forEach(w=>{
+    const d = document.createElement('div');
+    let cls='info';
+    if(/LOSS|STALL|MINIMUM|CRIT/i.test(w)) cls='danger';
+    else if(/BANK|SPEED|LOW/i.test(w)) cls='caution';
+    d.className = 'warn ' + cls;
+    d.textContent = w;
+    warningsEl.appendChild(d);
+  });
+
+  // compass & horizon
+  const hdg = ((display.heading % 360) + 360) % 360;
+  headingText.textContent = `HDG ${String(Math.round(hdg)).padStart(3,'0')}°`;
+  compDial.setAttribute('transform', `translate(120,120) rotate(${-hdg})`);
+  rollGroup.setAttribute('transform', `rotate(${display.roll})`);
+  pitchGroup.setAttribute('transform', `translate(0,${-display.pitch * 6})`);
+}
+
+/* simulation fallback */
+let simT = 0;
+function simulate(dt){
+  simT += dt;
+  target.heading = (simT * 20) % 360;
+  target.roll = 12 * Math.sin(simT * 0.6);
+  target.pitch = 6 * Math.sin(simT * 0.35) + 1.5 * Math.cos(simT * 0.12);
+  target.alt += 0.6 * Math.sin(simT * 0.2);
+  target.speed = 110 + 6 * Math.cos(simT * 0.25);
+  target.accel = 0.5 + Math.abs(Math.sin(simT * 0.6)) * 1.5;
+  target.mode = 'SIM';
+  let w = ['RUNNING'];
+  if(target.speed < 45) w.push('STALL');
+  if(Math.abs(target.roll) > 35) w.push('BANK ANGLE');
+  if(Math.random() < 0.001) w.push('SIGNAL LOSS');
+  target.warnings = w;
+
+  // fake gps coords for demo and append to trackPoints
+  const centerLat = HOME_COORD.lat + 0.01 * Math.sin(simT*0.05);
+  const centerLon = HOME_COORD.lon + 0.01 * Math.cos(simT*0.05);
+  handleIncomingGPS(centerLat, centerLon);
+}
+
+/* track update: add incoming point, cap length, and send to iframe */
+function handleIncomingGPS(lat, lon){
+  if(typeof lat !== 'number' || typeof lon !== 'number') return;
+  // add to trackPoints
+  trackPoints.push([lat, lon]);
+  if(trackPoints.length > MAX_TRACK_POINTS) trackPoints.shift();
+  // notify iframe of new telemetry + track
+  postToIframe({ type:'telemetry', gps: { lat, lon }, track: trackPoints.slice(-800) });
+}
+
+/* websocket client */
+function setWSStatus(s){ wsStatusEl.textContent = s; wsConnected = (s === 'CONNECTED'); }
+
+function connectWS(){
+  if(!USE_WEBSOCKET){ setWSStatus('DISABLED'); return; }
+  try{
+    setWSStatus('CONNECTING');
+    ws = new WebSocket(WS_URL);
+    ws.onopen = ()=>{ setWSStatus('CONNECTED'); console.log('WS open'); };
+    ws.onclose = ()=>{ setWSStatus('DISCONNECTED'); console.log('WS closed'); setTimeout(connectWS, RECONNECT_MS); };
+    ws.onerror = (e)=>{ setWSStatus('ERROR'); console.error('WS err', e); ws.close(); };
+    ws.onmessage = (ev)=>{
+      try{
+        const j = JSON.parse(ev.data);
+        // accept several field names
+        if(typeof j.altitude === 'number') target.alt = j.altitude;
+        else if(typeof j.alt === 'number') target.alt = j.alt;
+        if(typeof j.speed === 'number') target.speed = j.speed;
+        if(typeof j.accel === 'number') target.accel = j.accel;
+        if(typeof j.pitch === 'number') target.pitch = j.pitch;
+        if(typeof j.roll === 'number') target.roll = j.roll;
+        if(typeof j.heading === 'number') target.heading = j.heading;
+        if(typeof j.mode === 'string') target.mode = j.mode;
+        // warnings
+        if(Array.isArray(j.warnings)) target.warnings = j.warnings;
+        else if(typeof j.status === 'string') target.warnings = [j.status];
+
+        // gps fields
+        let lat = null, lon = null;
+        if(typeof j.gps_lat === 'number') lat = j.gps_lat;
+        else if(typeof j.lat === 'number') lat = j.lat;
+        if(typeof j.gps_lon === 'number') lon = j.gps_lon;
+        else if(typeof j.lon === 'number') lon = j.lon;
+
+        if(lat !== null && lon !== null){
+          handleIncomingGPS(lat, lon);
+        }
+      }catch(err){ console.warn('WS message parse failed', err); }
+    };
+  }catch(e){ setWSStatus('ERR'); console.error(e); }
+}
+
+/* Start WS or simulate */
+if(USE_WEBSOCKET) connectWS();
+
+/* main animation loop */
+let last = performance.now();
+function raf(now){
+  const dt = Math.min(0.1, (now - last)/1000);
+  last = now;
+  if(!wsConnected) simulate(dt);
+  tickInterp(dt);
+  updateUI();
+  requestAnimationFrame(raf);
+}
+buildLadder(); requestAnimationFrame(raf);
+
+/* Parent <-> iframe messaging: receive WP added from iframe */
+window.addEventListener("message", (ev)=>{
+  const data = ev.data || {};
+  if(data.action === 'WP_ADDED' && typeof data.lat === 'number' && typeof data.lon === 'number'){
+    console.log('Waypoint chosen in iframe:', data.lat, data.lon);
+    // send to autopilot via WebSocket
+    if(ws && wsConnected){
+      ws.send(JSON.stringify({ cmd:'GOTO', lat: data.lat, lon: data.lon }));
+    } else {
+      console.warn('WS not connected — cannot send GOTO');
+    }
+    // forward to iframe to draw the waypoint (it should already draw itself)
+    postToIframe({ type:'WP_CONFIRM', lat:data.lat, lon:data.lon });
+  }
+});
+
+/* Buttons: RTB & Set WP — these send commands to both iframe (for UI) and WS (for autopilot) */
+document.getElementById('btnRTB').addEventListener('click', ()=>{
+  // send RTB to autopilot
+  if(ws && wsConnected) ws.send(JSON.stringify({ cmd:'RTB' }));
+  else console.warn('WS not connected — RTB not sent');
+
+  // send RTB + track to iframe so it can draw planned path (iframe should interpret)
+  postToIframe({ action:'RTB', home: HOME_COORD, track: trackPoints.slice() });
+});
+
+document.getElementById('btnWP').addEventListener('click', ()=>{
+  // ask iframe to let user click a waypoint; iframe will post back WP_ADDED
+  postToIframe({ action:'SET_WP' });
+});
+
+/* utility: let parent request the iframe refresh track/telemetry if needed */
+function refreshIframe(){
+  postToIframe({ type:'telemetry', gps:null, track: trackPoints.slice(-800) });
+}
+
+/* Expose small debug for console */
+window._debug = { trackPoints, postToIframe, refreshIframe };
+</script>
+</body>
+</html>
